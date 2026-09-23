@@ -229,17 +229,6 @@ curl -X POST http://localhost:8001/embed \
 ```
 
 ---
-
-## 7. Known Limitations & Operational Notes
-
-1. **Host Docker Socket Permissions**:
-   - If running on a restricted host account without `docker` group membership, commands must be prefixed with `sudo` (`sudo docker compose up -d`).
-2. **GPU Memory Allocation**:
-   - Both `api-service` (reranker) and `embedding-service` (embedder) default to `cuda:0`. On systems with multiple GPUs (e.g. dual L4), set `EMBEDDING_DEVICE=cuda:1` in `.env` to dedicate one GPU to ingestion embedding and the other to real-time query serving.
-3. **Torchaudio ABI3 Incompatibility**:
-   - An upstream symbol mismatch in prebuilt `torchaudio` ABI3 wheels on Python 3.10 is automatically masked by `src.common.torch_compat`. All scripts importing `transformers` or `torch` import this compat module first.
-4. **PostgreSQL GIN Indexing Timing**:
-   - When bulk loading 20M+ chunks, execute initial COPY into the table *before* building the GIN inverted index. Building GIN after loading is ~5× faster than updating GIN incrementally per row.
 5. **No Hardcoded Secrets**:
    - Never commit `.env` with production keys to source control. Use environment variable injection in CI/CD or secrets managers (e.g. HashiCorp Vault, AWS Secrets Manager).
 
