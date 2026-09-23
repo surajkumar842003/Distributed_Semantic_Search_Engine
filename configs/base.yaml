@@ -1,0 +1,17 @@
+project_name: "distributed_rag_wikipedia"
+version: "0.1.0"
+seed: 42
+
+paths:
+  data_dir: "/DATA/suraj/m1/search_engine/data"
+  raw_parquet_path: "/DATA/suraj/m1/search_engine/data/raw/wikipedia.parquet"
+  chunks_staging_dir: "/DATA/suraj/m1/search_engine/data/chunks"
+  index_dir: "/DATA/suraj/m1/search_engine/data/indexes"
+  cache_dir: "/DATA/suraj/m1/search_engine/data/cache"
+  embeddings_dir: "/DATA/suraj/m1/search_engine/data/embeddings"
+  shm_staging_dir: "/dev/shm/search_engine_staging"
+
+logging:
+  level: "INFO"
+  format: "json"
+

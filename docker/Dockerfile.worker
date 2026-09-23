@@ -1,0 +1,41 @@
+# =============================================================================
+# Ingestion Worker Service Dockerfile
+# Multiprocessing CPU chunking, cleaning, and normalization worker
+# =============================================================================
+FROM python:3.10-slim AS base
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install locked Python dependencies
+COPY requirements-lock.txt pyproject.toml /app/
+RUN pip install --no-cache-dir -U pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements-lock.txt && \
+    pip install --no-cache-dir -e .
+
+# Copy application source and configuration
+COPY src/ /app/src/
+COPY configs/ /app/configs/
+
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    DATA_DIR=/data \
+    RAW_INPUT_DIR=/data/raw \
+    CHUNKS_OUTPUT_DIR=/data/chunks \
+    INGESTION_WATCH_INTERVAL=10
+
+# Security: run as non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+USER appuser
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -m src.ingestion.worker --health-check || exit 1
+
+CMD ["python", "-m", "src.ingestion.worker"]
+

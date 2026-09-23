@@ -1,0 +1,44 @@
+# =============================================================================
+# GPU Embedding Service Dockerfile
+# NVIDIA L4 (24GB VRAM) accelerated embedding microservice & shard worker
+# =============================================================================
+FROM python:3.10-slim AS base
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install locked Python dependencies
+COPY requirements-lock.txt pyproject.toml /app/
+RUN pip install --no-cache-dir -U pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements-lock.txt && \
+    pip install --no-cache-dir -e .
+
+# Copy application source and configuration
+COPY src/ /app/src/
+COPY configs/ /app/configs/
+
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    DATA_DIR=/data \
+    HF_HOME=/data/cache/huggingface \
+    TORCH_HOME=/data/cache/torch \
+    EMBEDDING_HOST=0.0.0.0 \
+    EMBEDDING_PORT=8001
+
+EXPOSE 8001
+
+# Security: run as non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+USER appuser
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+CMD ["uvicorn", "src.embedding.service:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]
+

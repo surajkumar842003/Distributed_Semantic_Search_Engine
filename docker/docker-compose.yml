@@ -1,0 +1,304 @@
+# Docker Compose for Distributed Wikipedia Semantic Search Engine & RAG
+# High-performance PostgreSQL 16 on NVMe partition and FastAPI serving service
+# =============================================================================
+# Docker Compose: Distributed Wikipedia Semantic Search & Grounded RAG Stack
+# =============================================================================
+# Services:
+#   - postgres:           Relational metadata, tsvector full-text search & query logs
+#   - ingestion-worker:   CPU ingestion daemon for raw Parquet -> heading-aware chunks
+#   - embedding-service:  GPU vector embedding microservice & streaming shard worker
+#   - api-service:        FastAPI hybrid retrieval and grounded RAG synthesis serving
+#
+# Optional Services (Profiles):
+#   - redis:              High-speed query and vector caching
+#   - prometheus:         Metrics aggregation (Profile: monitoring)
+#   - grafana:            Observability dashboards (Profile: monitoring)
+# =============================================================================
+
+networks:
+  wikirag_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. PostgreSQL 16 Storage & Full-Text Search Layer
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-bullseye
+    container_name: wikirag_postgres
+    restart: unless-stopped
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_secure_password}
+      POSTGRES_DB: ${POSTGRES_DB:-wikirag}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Bind mount directly to /DATA/ (5.9 TB free) to avoid exhausting root disk
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    shm_size: 16gb
+    networks:
+      - wikirag_net
+    deploy:
+      resources:
+        limits:
+          cpus: "16.0"
+          memory: 32G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-wikirag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # 2. Ingestion Worker Service (CPU Chunking & Normalization)
+  # ---------------------------------------------------------------------------
+  ingestion-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: wikirag_ingestion_worker
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATA_DIR=/data
+      - RAW_INPUT_DIR=${RAW_INPUT_DIR:-/data/raw}
+      - CHUNKS_OUTPUT_DIR=${CHUNKS_OUTPUT_DIR:-/data/chunks}
+      - NUM_CPU_WORKERS=${NUM_CPU_WORKERS:-8}
+      - INGESTION_WATCH_INTERVAL=${INGESTION_WATCH_INTERVAL:-10}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres_secure_password}
+      - POSTGRES_DB=${POSTGRES_DB:-wikirag}
+    volumes:
+      - ${DATA_DIR:-/DATA/suraj/m1/search_engine/data}:/data
+      - /dev/shm:/dev/shm
+    networks:
+      - wikirag_net
+    deploy:
+      resources:
+        limits:
+          cpus: "16.0"
+          memory: 32G
+    healthcheck:
+      test: ["CMD-SHELL", "python -m src.ingestion.worker --health-check || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # 3. GPU Embedding Service (Microservice & Shard Streaming)
+  # ---------------------------------------------------------------------------
+  embedding-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.embedding
+    container_name: wikirag_embedding_service
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    environment:
+      - DATA_DIR=/data
+      - HF_HOME=/data/cache/huggingface
+      - TORCH_HOME=/data/cache/torch
+      - CHUNKS_OUTPUT_DIR=${CHUNKS_OUTPUT_DIR:-/data/chunks}
+      - EMBEDDINGS_OUTPUT_DIR=${EMBEDDINGS_OUTPUT_DIR:-/data/embeddings}
+      - EMBEDDING_DEVICE=${EMBEDDING_DEVICE:-cuda:0}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - EMBEDDING_BATCH_SIZE=${EMBEDDING_BATCH_SIZE:-64}
+      - AUTO_EMBED_SHARDS=${AUTO_EMBED_SHARDS:-false}
+    ports:
+      - "${EMBEDDING_PORT:-8001}:8001"
+    volumes:
+      - ${DATA_DIR:-/DATA/suraj/m1/search_engine/data}:/data
+      - /dev/shm:/dev/shm
+    networks:
+      - wikirag_net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        limits:
+          cpus: "8.0"
+          memory: 24G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+  # ---------------------------------------------------------------------------
+  # 4. FastAPI Serving Application (Hybrid Retrieval & RAG Synthesis)
+  # ---------------------------------------------------------------------------
+  api-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: wikirag_api_service
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embedding-service:
+        condition: service_healthy
+    environment:
+      - DATA_DIR=/data
+      - HF_HOME=/data/cache/huggingface
+      - TORCH_HOME=/data/cache/torch
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres_secure_password}
+      - POSTGRES_DB=${POSTGRES_DB:-wikirag}
+      - EMBEDDING_SERVICE_URL=http://embedding-service:8001
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - RERANK_DEVICE=${RERANK_DEVICE:-cuda:0}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-gemini-1.5-flash}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ${DATA_DIR:-/DATA/suraj/m1/search_engine/data}:/data
+      - /dev/shm:/dev/shm
+    networks:
+      - wikirag_net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        limits:
+          cpus: "16.0"
+          memory: 32G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # 5. Redis Cache (Optional / Caching Layer)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7.2-alpine
+    container_name: wikirag_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 4gb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - wikirag_net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # 6. Prometheus (Optional Profile: monitoring)
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: wikirag_prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+      - all
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    networks:
+      - wikirag_net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # 7. Grafana (Optional Profile: monitoring)
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: wikirag_grafana
+    restart: unless-stopped
+    profiles:
+      - monitoring
+      - all
+    depends_on:
+      - prometheus
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin_secure_password}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - wikirag_net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

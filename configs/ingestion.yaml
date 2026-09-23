@@ -1,0 +1,18 @@
+ingestion:
+  num_cpu_workers: 90
+  worker_chunksize: 500
+  pin_to_numa: true
+  
+  chunking:
+    target_token_count: 256
+    min_token_count: 40
+    overlap_token_count: 40
+    prepend_section_headers: true
+    preserve_heading_path: true
+    tokenizer_name: "BAAI/bge-small-en-v1.5"
+
+  buffer:
+    use_shm: true
+    max_queue_memory_mb: 8192
+    flush_batch_size: 5000
+

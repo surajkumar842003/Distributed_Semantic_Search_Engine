@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "distributed-wikipedia-rag"
+version = "0.1.0"
+description = "Distributed Semantic Search Engine with Hybrid RAG over Wikipedia"
+authors = [
+    { name = "Suraj", email = "suraj@local" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "pyarrow>=14.0.0",
+    "numpy>=1.24.0",
+    "tqdm>=4.65.0",
+    "rich>=13.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "asyncpg>=0.28.0",
+    "psycopg2-binary>=2.9.0",
+    "sqlalchemy>=2.0.0",
+    "torch>=2.1.0",
+    "transformers>=4.36.0",
+    "sentence-transformers>=2.2.2",
+    "faiss-cpu>=1.7.4",
+    "httpx>=0.25.0",
+    "prometheus-client>=0.17.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.7.0",
+    "ruff>=0.0.285",
+    "mypy>=1.5.1"
+]
+gpu = [
+    "faiss-gpu>=1.7.4"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+

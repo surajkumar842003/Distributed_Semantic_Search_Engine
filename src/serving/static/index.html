@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WikiRAG — Semantic Search Engine</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+<style>
+/* ========== CSS Variables & Themes ========== */
+:root {
+  --bg: #ffffff; --bg-secondary: #f8f9fa; --bg-tertiary: #f1f3f4;
+  --text: #202124; --text-secondary: #5f6368; --text-muted: #9aa0a6;
+  --primary: #1a73e8; --primary-hover: #1557b0; --primary-light: #e8f0fe;
+  --accent: #34a853; --accent-warm: #ea4335; --accent-yellow: #fbbc04;
+  --border: #dfe1e5; --border-focus: #1a73e8;
+  --card-bg: #ffffff; --card-shadow: 0 1px 6px rgba(32,33,36,.16);
+  --card-shadow-hover: 0 2px 12px rgba(32,33,36,.24);
+  --rag-bg: #f0f7ff; --rag-border: #c2dbf4;
+  --citation-bg: #e8f0fe; --citation-hover: #d2e3fc;
+  --code-bg: #f1f3f4; --kbd-bg: #eee; --kbd-border: #ccc;
+  --scrollbar: #dadce0; --scrollbar-hover: #bdc1c6;
+  --skeleton: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  --transition: 200ms cubic-bezier(.4,0,.2,1);
+  --radius: 24px; --radius-sm: 12px; --radius-xs: 8px;
+  --max-w: 720px;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+}
+[data-theme="dark"] {
+  --bg: #202124; --bg-secondary: #292a2d; --bg-tertiary: #303134;
+  --text: #e8eaed; --text-secondary: #9aa0a6; --text-muted: #6b6f74;
+  --primary: #8ab4f8; --primary-hover: #aecbfa; --primary-light: #1a3350;
+  --border: #3c4043; --border-focus: #8ab4f8;
+  --card-bg: #303134; --card-shadow: 0 1px 6px rgba(0,0,0,.4);
+  --card-shadow-hover: 0 2px 12px rgba(0,0,0,.6);
+  --rag-bg: #1a2a3a; --rag-border: #2a4a6a;
+  --citation-bg: #1a3350; --citation-hover: #254a70;
+  --code-bg: #3c4043; --kbd-bg: #3c4043; --kbd-border: #5f6368;
+  --scrollbar: #3c4043; --scrollbar-hover: #5f6368;
+  --skeleton: linear-gradient(90deg, #303134 25%, #3c4043 50%, #303134 75%);
+}
+
+/* ========== Base Reset ========== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  min-height: 100vh; transition: background var(--transition), color var(--transition);
+  overflow-x: hidden;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+
+/* ========== Navbar ========== */
+.navbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  height: 56px; display: flex; align-items: center; padding: 0 16px; gap: 12px;
+  background: var(--bg-secondary); border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px); transition: all var(--transition);
+}
+.navbar.hidden { transform: translateY(-100%); }
+.nav-logo {
+  font-size: 18px; font-weight: 700; color: var(--primary);
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  flex-shrink: 0; user-select: none;
+}
+.nav-logo span { font-size: 22px; }
+.nav-search {
+  flex: 1; max-width: 680px; margin: 0 auto; position: relative;
+}
+.nav-search input {
+  width: 100%; height: 40px; padding: 0 44px 0 40px;
+  border: 1px solid var(--border); border-radius: 20px;
+  background: var(--bg); color: var(--text); font-size: 14px;
+  outline: none; transition: all var(--transition);
+}
+.nav-search input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--primary-light); }
+.nav-search .search-icon {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); font-size: 16px; pointer-events: none;
+}
+.nav-search .clear-btn {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  font-size: 18px; padding: 4px; border-radius: 50%; display: none;
+}
+.nav-search .clear-btn:hover { background: var(--bg-tertiary); color: var(--text); }
+.nav-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.nav-btn {
+  width: 36px; height: 36px; border: none; border-radius: 50%;
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; transition: all var(--transition); position: relative;
+}
+.nav-btn:hover { background: var(--bg-tertiary); color: var(--text); }
+.nav-btn .tooltip {
+  position: absolute; bottom: -30px; left: 50%; transform: translateX(-50%);
+  background: var(--text); color: var(--bg); padding: 4px 8px;
+  border-radius: 4px; font-size: 11px; white-space: nowrap;
+  opacity: 0; pointer-events: none; transition: opacity 150ms;
+}
+.nav-btn:hover .tooltip { opacity: 1; }
+.badge {
+  position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px;
+  background: var(--accent-warm); color: white; border-radius: 8px;
+  font-size: 10px; display: flex; align-items: center; justify-content: center;
+  padding: 0 4px;
+}
+
+/* ========== Homepage ========== */
+.homepage {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; min-height: 100vh; padding: 20px;
+  transition: opacity 300ms;
+}
+.homepage.hidden { display: none; }
+.home-logo {
+  font-size: 64px; font-weight: 800; margin-bottom: 8px;
+  background: linear-gradient(135deg, #4285f4, #34a853, #fbbc04, #ea4335);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text; user-select: none;
+}
+.home-tagline { color: var(--text-secondary); font-size: 16px; margin-bottom: 32px; }
+.home-search {
+  width: 100%; max-width: 584px; position: relative;
+}
+.home-search input {
+  width: 100%; height: 52px; padding: 0 52px 0 48px;
+  border: 1px solid var(--border); border-radius: 26px;
+  background: var(--bg); color: var(--text); font-size: 16px;
+  outline: none; transition: all var(--transition);
+  box-shadow: var(--card-shadow);
+}
+.home-search input:focus {
+  border-color: transparent; box-shadow: var(--card-shadow-hover);
+}
+.home-search input::placeholder { color: var(--text-muted); }
+.home-search .search-icon {
+  position: absolute; left: 18px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); font-size: 20px; pointer-events: none;
+}
+.home-search .voice-btn {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; color: var(--accent-warm);
+  cursor: pointer; font-size: 22px; padding: 4px; border-radius: 50%;
+}
+.home-search .voice-btn:hover { background: rgba(234,67,53,.1); }
+.home-search .voice-btn.listening { animation: pulse 1s infinite; color: var(--accent-warm); }
+@keyframes pulse { 0%, 100% { transform: translateY(-50%) scale(1); } 50% { transform: translateY(-50%) scale(1.15); } }
+
+.home-actions { display: flex; gap: 12px; margin-top: 24px; }
+.home-btn {
+  padding: 8px 20px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-tertiary); color: var(--text); font-size: 13px;
+  cursor: pointer; transition: all var(--transition);
+}
+.home-btn:hover { border-color: var(--text-muted); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.home-shortcuts {
+  margin-top: 40px; display: flex; gap: 24px; color: var(--text-muted); font-size: 12px;
+}
+.home-shortcuts kbd {
+  padding: 2px 6px; background: var(--kbd-bg); border: 1px solid var(--kbd-border);
+  border-radius: 4px; font-family: var(--font-mono); font-size: 11px;
+}
+
+/* ========== Results Page ========== */
+.results-page { display: none; padding-top: 72px; min-height: 100vh; }
+.results-page.active { display: block; }
+.results-container {
+  max-width: var(--max-w); margin: 0 auto; padding: 16px 20px 60px;
+}
+
+/* Query Info Bar */
+.query-info {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+  font-size: 13px; color: var(--text-muted);
+}
+.query-info .count { font-weight: 500; }
+.query-info .latency {
+  margin-left: auto; display: flex; align-items: center; gap: 4px;
+  font-family: var(--font-mono); font-size: 12px;
+}
+.query-info .latency .dot {
+  width: 6px; height: 6px; border-radius: 50%; display: inline-block;
+}
+.dot.fast { background: var(--accent); }
+.dot.medium { background: var(--accent-yellow); }
+.dot.slow { background: var(--accent-warm); }
+
+/* Mode Tabs */
+.mode-tabs {
+  display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid var(--border);
+}
+.mode-tab {
+  padding: 8px 16px; border: none; background: transparent;
+  color: var(--text-secondary); font-size: 13px; font-weight: 500;
+  cursor: pointer; border-bottom: 3px solid transparent;
+  transition: all var(--transition);
+}
+.mode-tab:hover { color: var(--primary); background: var(--primary-light); }
+.mode-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+/* RAG Answer Card */
+.rag-card {
+  background: var(--rag-bg); border: 1px solid var(--rag-border);
+  border-radius: var(--radius-sm); padding: 20px; margin-bottom: 24px;
+  animation: fadeSlideIn 400ms ease-out;
+}
+.rag-card .rag-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  font-size: 14px; font-weight: 600; color: var(--primary);
+}
+.rag-card .rag-header .sparkle { font-size: 18px; }
+.rag-card .rag-answer {
+  font-size: 15px; line-height: 1.7; color: var(--text);
+}
+.rag-card .rag-answer .citation-ref {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 4px;
+  background: var(--citation-bg); color: var(--primary);
+  border-radius: 4px; font-size: 11px; font-weight: 600;
+  cursor: pointer; vertical-align: super; margin: 0 1px;
+  transition: background var(--transition);
+}
+.rag-card .rag-answer .citation-ref:hover { background: var(--citation-hover); }
+.rag-card .rag-sources {
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--rag-border);
+}
+.rag-card .rag-sources-title {
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+}
+.rag-source-item {
+  display: flex; align-items: flex-start; gap: 8px; padding: 6px 0;
+  font-size: 13px;
+}
+.rag-source-item .source-num {
+  min-width: 20px; height: 20px; background: var(--citation-bg);
+  color: var(--primary); border-radius: 4px; display: flex;
+  align-items: center; justify-content: center; font-size: 11px;
+  font-weight: 700; flex-shrink: 0;
+}
+.rag-source-item .source-title { color: var(--text); font-weight: 500; }
+.rag-source-item .source-section { color: var(--text-muted); font-size: 12px; }
+.rag-card .rag-insufficient {
+  color: var(--accent-warm); font-style: italic; font-size: 14px;
+}
+
+/* Search Result Cards */
+.result-card {
+  padding: 16px 0; border-bottom: 1px solid var(--border);
+  animation: fadeSlideIn 300ms ease-out backwards;
+}
+.result-card:last-child { border-bottom: none; }
+.result-url {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+  font-size: 12px; color: var(--text-muted);
+}
+.result-url .favicon {
+  width: 16px; height: 16px; border-radius: 50%; background: var(--bg-tertiary);
+  display: flex; align-items: center; justify-content: center; font-size: 10px;
+}
+.result-title {
+  font-size: 18px; color: var(--primary); cursor: pointer;
+  line-height: 1.3; margin-bottom: 6px; font-weight: 400;
+}
+.result-title:hover { text-decoration: underline; }
+.result-snippet {
+  font-size: 14px; line-height: 1.58; color: var(--text-secondary);
+}
+.result-snippet em, .result-snippet mark {
+  background: var(--accent-yellow); color: var(--text);
+  font-style: normal; padding: 0 2px; border-radius: 2px;
+}
+.result-meta {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+  font-size: 12px; color: var(--text-muted);
+}
+.result-meta .tag {
+  padding: 2px 8px; background: var(--bg-tertiary); border-radius: 10px;
+}
+.result-meta .score { font-family: var(--font-mono); }
+
+/* ========== Sidebar Panels ========== */
+.sidebar-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.4);
+  z-index: 200; opacity: 0; pointer-events: none;
+  transition: opacity 250ms;
+}
+.sidebar-overlay.active { opacity: 1; pointer-events: auto; }
+.sidebar {
+  position: fixed; top: 0; right: -380px; bottom: 0; width: 380px;
+  background: var(--bg); z-index: 201; overflow-y: auto;
+  box-shadow: -4px 0 20px rgba(0,0,0,.15);
+  transition: right 300ms cubic-bezier(.4,0,.2,1);
+  padding: 20px;
+}
+.sidebar.active { right: 0; }
+.sidebar-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
+}
+.sidebar-header h2 { font-size: 18px; font-weight: 600; }
+.sidebar-close {
+  width: 32px; height: 32px; border: none; border-radius: 50%;
+  background: transparent; color: var(--text); cursor: pointer;
+  font-size: 20px; display: flex; align-items: center; justify-content: center;
+}
+.sidebar-close:hover { background: var(--bg-tertiary); }
+
+/* History Items */
+.history-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 8px;
+  border-radius: var(--radius-xs); cursor: pointer;
+  transition: background var(--transition);
+}
+.history-item:hover { background: var(--bg-tertiary); }
+.history-item .h-icon { color: var(--text-muted); font-size: 16px; flex-shrink: 0; }
+.history-item .h-query { flex: 1; font-size: 14px; color: var(--text); }
+.history-item .h-time { font-size: 11px; color: var(--text-muted); }
+.history-item .h-delete {
+  opacity: 0; background: none; border: none; color: var(--text-muted);
+  cursor: pointer; font-size: 14px; padding: 4px;
+}
+.history-item:hover .h-delete { opacity: 1; }
+.history-empty {
+  text-align: center; padding: 40px 0; color: var(--text-muted); font-size: 14px;
+}
+
+/* Settings */
+.setting-group { margin-bottom: 20px; }
+.setting-group label {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; font-size: 14px; color: var(--text);
+}
+.setting-group .desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.toggle {
+  width: 44px; height: 24px; background: var(--border); border-radius: 12px;
+  position: relative; cursor: pointer; transition: background var(--transition);
+  flex-shrink: 0;
+}
+.toggle.active { background: var(--primary); }
+.toggle::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 20px; height: 20px; background: white; border-radius: 50%;
+  transition: transform var(--transition);
+}
+.toggle.active::after { transform: translateX(20px); }
+select.setting-select {
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--text); font-size: 13px; outline: none;
+}
+
+/* System Status */
+.status-card {
+  background: var(--bg-tertiary); border-radius: var(--radius-xs);
+  padding: 14px; margin-bottom: 12px;
+}
+.status-card .status-title {
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+}
+.status-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 0; font-size: 13px;
+}
+.status-row .status-label { color: var(--text-secondary); }
+.status-row .status-value { font-family: var(--font-mono); font-weight: 500; }
+.status-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px;
+}
+.status-dot.online { background: var(--accent); }
+.status-dot.offline { background: var(--accent-warm); }
+
+/* ========== Loading Skeleton ========== */
+.skeleton-card { padding: 16px 0; }
+.skeleton-line {
+  height: 14px; border-radius: 4px; margin-bottom: 8px;
+  background-size: 200% 100%;
+  background-image: var(--skeleton);
+  animation: shimmer 1.5s infinite;
+}
+.skeleton-line.w60 { width: 60%; }
+.skeleton-line.w80 { width: 80%; }
+.skeleton-line.w100 { width: 100%; }
+.skeleton-line.w40 { width: 40%; }
+.skeleton-line.h20 { height: 20px; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ========== Animations ========== */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========== Keyboard Shortcut Modal ========== */
+.kbd-modal {
+  position: fixed; inset: 0; z-index: 300;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.5);
+}
+.kbd-modal.active { display: flex; }
+.kbd-content {
+  background: var(--card-bg); border-radius: var(--radius-sm);
+  padding: 24px; width: 420px; max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 8px 40px rgba(0,0,0,.3);
+}
+.kbd-content h3 { margin-bottom: 16px; font-size: 18px; }
+.kbd-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0; font-size: 14px;
+}
+.kbd-row kbd {
+  padding: 3px 8px; background: var(--kbd-bg); border: 1px solid var(--kbd-border);
+  border-radius: 4px; font-family: var(--font-mono); font-size: 12px;
+}
+
+/* ========== Footer ========== */
+.footer {
+  background: var(--bg-secondary); border-top: 1px solid var(--border);
+  padding: 12px 20px; font-size: 12px; color: var(--text-muted);
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 768px) {
+  .nav-logo { font-size: 0; }
+  .nav-logo span { font-size: 22px; }
+  .home-logo { font-size: 40px; }
+  .sidebar { width: 100%; right: -100%; }
+  .home-shortcuts { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ====== Navbar (hidden on homepage, shown on results) ====== -->
+<nav class="navbar hidden" id="navbar">
+  <div class="nav-logo" onclick="goHome()" title="Home">
+    <span>🔍</span> WikiRAG
+  </div>
+  <div class="nav-search">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="navSearchInput" placeholder="Search Wikipedia..." autocomplete="off" spellcheck="false">
+    <button class="clear-btn" id="navClearBtn" onclick="clearNavSearch()">✕</button>
+  </div>
+  <div class="nav-actions">
+    <button class="nav-btn" onclick="toggleMode()" id="modeToggle" title="Toggle Dark Mode">
+      🌙 <span class="tooltip">Dark mode</span>
+    </button>
+    <button class="nav-btn" onclick="openSidebar('history')" title="History">
+      🕒 <span class="tooltip">History</span>
+      <span class="badge" id="historyBadge" style="display:none">0</span>
+    </button>
+    <button class="nav-btn" onclick="openSidebar('settings')" title="Settings">
+      ⚙️ <span class="tooltip">Settings</span>
+    </button>
+    <button class="nav-btn" onclick="showKeyboardShortcuts()" title="Keyboard Shortcuts">
+      ⌨️ <span class="tooltip">Shortcuts</span>
+    </button>
+  </div>
+</nav>
+
+<!-- ====== Homepage ====== -->
+<div class="homepage" id="homepage">
+  <div class="home-logo">WikiRAG</div>
+  <div class="home-tagline">Semantic Search & Grounded RAG over Wikipedia</div>
+  <div class="home-search">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="homeSearchInput" placeholder="Ask anything about Wikipedia..."
+           autocomplete="off" spellcheck="false" autofocus>
+    <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()" title="Voice Search">🎤</button>
+  </div>
+  <div class="home-actions">
+    <button class="home-btn" onclick="doSearch('Who was the first president of the United States?')">Try: US Presidents</button>
+    <button class="home-btn" onclick="doSearch('What instrument does Brad Mehldau play?')">Try: Brad Mehldau</button>
+    <button class="home-btn" onclick="doSearch('Explain quantum entanglement')">Try: Quantum Physics</button>
+  </div>
+  <div class="home-shortcuts">
+    <span><kbd>/</kbd> Focus search</span>
+    <span><kbd>Ctrl</kbd>+<kbd>K</kbd> Quick search</span>
+    <span><kbd>?</kbd> Shortcuts</span>
+  </div>
+</div>
+
+<!-- ====== Results Page ====== -->
+<div class="results-page" id="resultsPage">
+  <div class="results-container">
+    <!-- Mode Tabs -->
+    <div class="mode-tabs" id="modeTabs">
+      <button class="mode-tab active" data-mode="all" onclick="setMode('all')">🔍 All</button>
+      <button class="mode-tab" data-mode="rag" onclick="setMode('rag')">✨ AI Answer</button>
+      <button class="mode-tab" data-mode="dense" onclick="setMode('dense')">🎯 Semantic</button>
+    </div>
+
+    <!-- Query Info -->
+    <div class="query-info" id="queryInfo"></div>
+
+    <!-- RAG Answer -->
+    <div id="ragSection"></div>
+
+    <!-- Search Results -->
+    <div id="resultsSection"></div>
+  </div>
+
+  <div class="footer">
+    <span>WikiRAG — Parallel Multi-Stage Semantic Search Engine</span>
+    <span id="footerStatus">34,134 chunks indexed • FAISS IVF-Flat • bge-small-en-v1.5</span>
+  </div>
+</div>
+
+<!-- ====== Sidebar Overlay ====== -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+<!-- ====== History Sidebar ====== -->
+<div class="sidebar" id="historySidebar">
+  <div class="sidebar-header">
+    <h2>🕒 Search History</h2>
+    <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+  </div>
+  <div id="historyList"></div>
+</div>
+
+<!-- ====== Settings Sidebar ====== -->
+<div class="sidebar" id="settingsSidebar">
+  <div class="sidebar-header">
+    <h2>⚙️ Settings</h2>
+    <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+  </div>
+
+  <div class="setting-group">
+    <label>Dark Mode <div class="toggle" id="darkToggle" onclick="toggleMode()"></div></label>
+  </div>
+  <div class="setting-group">
+    <label>AI Answers
+      <div class="toggle active" id="ragToggle" onclick="toggleSetting('rag')"></div>
+    </label>
+    <div class="desc">Show AI-generated answers with citations above search results</div>
+  </div>
+  <div class="setting-group">
+    <label>Cross-Encoder Reranking
+      <div class="toggle active" id="rerankToggle" onclick="toggleSetting('rerank')"></div>
+    </label>
+    <div class="desc">Use BAAI/bge-reranker-base for precision reranking (adds ~150ms latency)</div>
+  </div>
+  <div class="setting-group">
+    <label>Results per page
+      <select class="setting-select" id="topKSelect" onchange="updateSettings()">
+        <option value="3">3 results</option>
+        <option value="5" selected>5 results</option>
+        <option value="10">10 results</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="status-card" id="systemStatus">
+    <div class="status-title">System Status</div>
+    <div id="statusContent">Loading...</div>
+  </div>
+</div>
+
+<!-- ====== Keyboard Shortcuts Modal ====== -->
+<div class="kbd-modal" id="kbdModal" onclick="if(event.target===this)this.classList.remove('active')">
+  <div class="kbd-content">
+    <h3>⌨️ Keyboard Shortcuts</h3>
+    <div class="kbd-row"><span>Focus search</span> <kbd>/</kbd></div>
+    <div class="kbd-row"><span>Quick search</span> <kbd>Ctrl + K</kbd></div>
+    <div class="kbd-row"><span>Go home</span> <kbd>Esc</kbd></div>
+    <div class="kbd-row"><span>Show shortcuts</span> <kbd>?</kbd></div>
+    <div class="kbd-row"><span>Toggle dark mode</span> <kbd>Ctrl + D</kbd></div>
+    <div class="kbd-row"><span>Close panel</span> <kbd>Esc</kbd></div>
+    <div class="kbd-row"><span>AI Answer tab</span> <kbd>1</kbd></div>
+    <div class="kbd-row"><span>Semantic tab</span> <kbd>2</kbd></div>
+  </div>
+</div>
+
+<script>
+// ========== State ==========
+const API_BASE = window.location.origin;
+let settings = {
+  darkMode: false,
+  showRag: true,
+  useRerank: true,
+  topK: 5,
+};
+let searchHistory = [];
+let currentQuery = '';
+let isSearching = false;
+
+// Load persisted state
+try {
+  const saved = JSON.parse(localStorage.getItem('wikirag_settings'));
+  if (saved) settings = { ...settings, ...saved };
+  const hist = JSON.parse(localStorage.getItem('wikirag_history'));
+  if (hist) searchHistory = hist;
+} catch(e) {}
+
+// Apply initial theme
+if (settings.darkMode) {
+  document.documentElement.dataset.theme = 'dark';
+  document.getElementById('modeToggle').textContent = '☀️';
+}
+
+// ========== Navigation ==========
+function goHome() {
+  document.getElementById('homepage').classList.remove('hidden');
+  document.getElementById('homepage').style.display = '';
+  document.getElementById('resultsPage').classList.remove('active');
+  document.getElementById('navbar').classList.add('hidden');
+  document.getElementById('homeSearchInput').value = '';
+  document.getElementById('homeSearchInput').focus();
+  document.title = 'WikiRAG — Semantic Search Engine';
+  history.pushState({}, '', '/');
+}
+
+function showResults() {
+  document.getElementById('homepage').style.display = 'none';
+  document.getElementById('resultsPage').classList.add('active');
+  document.getElementById('navbar').classList.remove('hidden');
+}
+
+// ========== Search ==========
+async function doSearch(query) {
+  if (!query || !query.trim() || isSearching) return;
+  query = query.trim();
+  currentQuery = query;
+  isSearching = true;
+
+  // Update UI
+  showResults();
+  document.getElementById('navSearchInput').value = query;
+  document.getElementById('navClearBtn').style.display = 'block';
+  document.title = `${query} — WikiRAG`;
+
+  // Add to history
+  addToHistory(query);
+
+  // Show loading skeletons
+  showLoadingState();
+
+  // Parallel: search + RAG
+  const topK = parseInt(document.getElementById('topKSelect').value) || 5;
+  const searchP = fetch(`${API_BASE}/search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, final_top_k: topK }),
+  }).then(r => r.json()).catch(e => ({ error: e.message }));
+
+  let ragP = Promise.resolve(null);
+  if (settings.showRag) {
+    ragP = fetch(`${API_BASE}/rag/answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, final_top_k: topK }),
+    }).then(r => r.json()).catch(e => null);
+  }
+
+  const [searchData, ragData] = await Promise.all([searchP, ragP]);
+  isSearching = false;
+
+  if (searchData.error) {
+    document.getElementById('resultsSection').innerHTML =
+      `<div style="padding:40px;text-align:center;color:var(--accent-warm)">
+        <div style="font-size:48px;margin-bottom:12px">⚠️</div>
+        <div style="font-size:16px">Search failed: ${searchData.error}</div>
+        <div style="font-size:13px;margin-top:8px;color:var(--text-muted)">
+          Make sure the API server is running on ${API_BASE}</div>
+      </div>`;
+    document.getElementById('ragSection').innerHTML = '';
+    document.getElementById('queryInfo').innerHTML = '';
+    return;
+  }
+
+  renderResults(searchData, ragData);
+}
+
+function showLoadingState() {
+  const skeletons = Array(3).fill(0).map(() => `
+    <div class="skeleton-card">
+      <div class="skeleton-line w40" style="height:12px"></div>
+      <div class="skeleton-line w80 h20"></div>
+      <div class="skeleton-line w100"></div>
+      <div class="skeleton-line w60"></div>
+    </div>
+  `).join('');
+
+  document.getElementById('ragSection').innerHTML = settings.showRag ? `
+    <div class="rag-card">
+      <div class="skeleton-line w40 h20"></div>
+      <div class="skeleton-line w100" style="margin-top:12px"></div>
+      <div class="skeleton-line w80"></div>
+      <div class="skeleton-line w60"></div>
+    </div>` : '';
+  document.getElementById('resultsSection').innerHTML = skeletons;
+  document.getElementById('queryInfo').innerHTML = '';
+}
+
+function renderResults(searchData, ragData) {
+  function formatUrl(rawUrl, title) {
+    let url = (rawUrl || '').trim();
+    if (!url) {
+      url = `https://en.wikipedia.org/wiki/${encodeURIComponent((title || '').replace(/ /g, '_'))}`;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      url = 'https://' + url;
+    }
+    return url;
+  }
+
+  // Query Info Bar
+  const totalMs = searchData.latency_ms?.total_latency_ms || 0;
+  const dotClass = totalMs < 100 ? 'fast' : totalMs < 300 ? 'medium' : 'slow';
+  document.getElementById('queryInfo').innerHTML = `
+    <span class="count">${searchData.total_candidates || 0} candidates evaluated</span>
+    <span>•</span>
+    <span>${searchData.results?.length || 0} results</span>
+    <span class="latency">
+      <span class="dot ${dotClass}"></span>
+      ${totalMs.toFixed(1)} ms
+      ${searchData.latency_ms?.dense_latency_ms ? `(dense: ${searchData.latency_ms.dense_latency_ms.toFixed(1)}ms` : ''}
+      ${searchData.latency_ms?.sparse_latency_ms ? ` • sparse: ${searchData.latency_ms.sparse_latency_ms.toFixed(1)}ms` : ''}
+      ${searchData.latency_ms?.rerank_latency_ms ? ` • rerank: ${searchData.latency_ms.rerank_latency_ms.toFixed(1)}ms` : ''})
+    </span>
+  `;
+
+  // RAG Answer
+  if (ragData && !ragData.detail) {
+    const answer = ragData.answer || '';
+    const citations = ragData.citations || [];
+    const insufficient = ragData.insufficient_context;
+
+    if (insufficient) {
+      document.getElementById('ragSection').innerHTML = `
+        <div class="rag-card">
+          <div class="rag-header"><span class="sparkle">✨</span> AI Answer</div>
+          <div class="rag-insufficient">⚠️ ${answer || 'The provided context is insufficient to answer this question.'}</div>
+        </div>`;
+    } else {
+      // Format answer with clickable citation refs
+      let formattedAnswer = answer.replace(/\[(\d+)\]/g, '<span class="citation-ref" onclick="scrollToSource($1)">$1</span>');
+
+      let sourcesHtml = '';
+      if (citations.length > 0) {
+        sourcesHtml = `
+          <div class="rag-sources">
+            <div class="rag-sources-title">Sources</div>
+            ${citations.map(c => `
+              <div class="rag-source-item" id="source-${c.citation_index}">
+                <span class="source-num">${c.citation_index}</span>
+                <div>
+                  <div class="source-title">${c.title || 'Wikipedia'}</div>
+                  <div class="source-section">${c.section_path || ''} · <a href="${formatUrl(c.url, c.title)}" target="_blank" rel="noopener noreferrer">Open</a></div>
+                </div>
+              </div>
+            `).join('')}
+          </div>`;
+      }
+
+      document.getElementById('ragSection').innerHTML = `
+        <div class="rag-card">
+          <div class="rag-header"><span class="sparkle">✨</span> AI Answer</div>
+          <div class="rag-answer">${formattedAnswer}</div>
+          ${sourcesHtml}
+        </div>`;
+    }
+  } else {
+    document.getElementById('ragSection').innerHTML = '';
+  }
+
+  // Search Results
+  const results = searchData.results || [];
+  if (results.length === 0) {
+    document.getElementById('resultsSection').innerHTML = `
+      <div style="padding:40px;text-align:center;color:var(--text-muted)">
+        <div style="font-size:48px;margin-bottom:12px">🔍</div>
+        <div>No results found for "${currentQuery}"</div>
+      </div>`;
+    return;
+  }
+  document.getElementById('resultsSection').innerHTML = results.map((r, i) => {
+    const title = r.title || `Article ${r.doc_id}`;
+    const fullUrl = formatUrl(r.url, title);
+    const displayUrl = fullUrl.replace(/^https?:\/\//i, '');
+    const text = r.text || '';
+    const snippet = highlightQuery(text.slice(0, 280), currentQuery);
+    const section = r.section_path && r.section_path !== 'Overview' ? r.section_path : '';
+
+    return `
+      <div class="result-card" style="animation-delay:${i * 60}ms">
+        <div class="result-url">
+          <span class="favicon">W</span>
+          <span>${displayUrl}</span>
+          ${section ? `<span>› ${section}</span>` : ''}
+        </div>
+        <a href="${fullUrl}" target="_blank" rel="noopener noreferrer" class="result-title">${title}</a>
+        <div class="result-snippet">${snippet}${text.length > 280 ? '...' : ''}</div>
+        <div class="result-meta">
+          ${r.dense_score != null ? `<span class="tag score">Dense: ${r.dense_score.toFixed(3)}</span>` : ''}
+          ${r.sparse_score != null ? `<span class="tag score">BM25: ${r.sparse_score.toFixed(1)}</span>` : ''}
+          ${r.rerank_score != null ? `<span class="tag score">Rerank: ${r.rerank_score.toFixed(4)}</span>` : ''}
+          ${r.rrf_score ? `<span class="tag score">RRF: ${r.rrf_score.toFixed(4)}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function highlightQuery(text, query) {
+  if (!query || !text) return text;
+  const words = query.split(/\s+/).filter(w => w.length > 2);
+  let result = text;
+  words.forEach(word => {
+    const regex = new RegExp(`(${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    result = result.replace(regex, '<mark>$1</mark>');
+  });
+  return result;
+}
+
+function scrollToSource(idx) {
+  const el = document.getElementById(`source-${idx}`);
+  if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.style.background = 'var(--citation-hover)';
+    setTimeout(() => el.style.background = '', 1500);
+  }
+}
+
+// ========== History ==========
+function addToHistory(query) {
+  searchHistory = searchHistory.filter(h => h.query !== query);
+  searchHistory.unshift({ query, time: Date.now() });
+  searchHistory = searchHistory.slice(0, 50);
+  localStorage.setItem('wikirag_history', JSON.stringify(searchHistory));
+  updateHistoryBadge();
+}
+
+function updateHistoryBadge() {
+  const badge = document.getElementById('historyBadge');
+  if (searchHistory.length > 0) {
+    badge.style.display = 'flex'; badge.textContent = searchHistory.length;
+  } else { badge.style.display = 'none'; }
+}
+
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  if (searchHistory.length === 0) {
+    list.innerHTML = '<div class="history-empty">No search history yet</div>';
+    return;
+  }
+  list.innerHTML = searchHistory.map((h, i) => `
+    <div class="history-item" onclick="doSearch('${h.query.replace(/'/g, "\\'")}')">
+      <span class="h-icon">🕒</span>
+      <span class="h-query">${h.query}</span>
+      <span class="h-time">${timeAgo(h.time)}</span>
+      <button class="h-delete" onclick="event.stopPropagation();deleteHistory(${i})">✕</button>
+    </div>
+  `).join('');
+}
+
+function deleteHistory(idx) {
+  searchHistory.splice(idx, 1);
+  localStorage.setItem('wikirag_history', JSON.stringify(searchHistory));
+  renderHistory(); updateHistoryBadge();
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff/3600000)}h ago`;
+  return `${Math.floor(diff/86400000)}d ago`;
+}
+
+// ========== Sidebar ==========
+function openSidebar(type) {
+  closeSidebar();
+  document.getElementById('sidebarOverlay').classList.add('active');
+  if (type === 'history') {
+    renderHistory();
+    document.getElementById('historySidebar').classList.add('active');
+  } else if (type === 'settings') {
+    loadSystemStatus();
+    document.getElementById('settingsSidebar').classList.add('active');
+  }
+}
+
+function closeSidebar() {
+  document.getElementById('sidebarOverlay').classList.remove('active');
+  document.querySelectorAll('.sidebar').forEach(s => s.classList.remove('active'));
+}
+
+// ========== Settings ==========
+function toggleMode() {
+  settings.darkMode = !settings.darkMode;
+  document.documentElement.dataset.theme = settings.darkMode ? 'dark' : 'light';
+  document.getElementById('modeToggle').textContent = settings.darkMode ? '☀️' : '🌙';
+  const dt = document.getElementById('darkToggle');
+  dt.classList.toggle('active', settings.darkMode);
+  saveSettings();
+}
+
+function toggleSetting(key) {
+  if (key === 'rag') { settings.showRag = !settings.showRag; document.getElementById('ragToggle').classList.toggle('active', settings.showRag); }
+  if (key === 'rerank') { settings.useRerank = !settings.useRerank; document.getElementById('rerankToggle').classList.toggle('active', settings.useRerank); }
+  saveSettings();
+}
+
+function updateSettings() {
+  settings.topK = parseInt(document.getElementById('topKSelect').value) || 5;
+  saveSettings();
+}
+
+function saveSettings() {
+  localStorage.setItem('wikirag_settings', JSON.stringify(settings));
+}
+
+async function loadSystemStatus() {
+  try {
+    const resp = await fetch(`${API_BASE}/health`);
+    const data = await resp.json();
+    const comps = data.components || {};
+    document.getElementById('statusContent').innerHTML = `
+      ${Object.entries(comps).map(([k, v]) => `
+        <div class="status-row">
+          <span class="status-label"><span class="status-dot ${v === 'healthy' ? 'online' : 'offline'}"></span>${k}</span>
+          <span class="status-value">${v}</span>
+        </div>
+      `).join('')}
+      <div class="status-row">
+        <span class="status-label">GPU</span>
+        <span class="status-value">${data.gpu_available ? '✅ CUDA' : '❌ CPU'}</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Uptime</span>
+        <span class="status-value">${(data.uptime_seconds/60).toFixed(1)} min</span>
+      </div>
+    `;
+  } catch(e) {
+    document.getElementById('statusContent').innerHTML =
+      '<div style="color:var(--accent-warm)">⚠️ API unreachable</div>';
+  }
+}
+
+// ========== Voice Search ==========
+let recognition = null;
+function toggleVoice() {
+  const btn = document.getElementById('voiceBtn');
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    alert('Voice search is not supported in this browser.');
+    return;
+  }
+  if (recognition) { recognition.stop(); recognition = null; btn.classList.remove('listening'); return; }
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.lang = 'en-US'; recognition.continuous = false;
+  btn.classList.add('listening');
+
+  recognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    document.getElementById('homeSearchInput').value = transcript;
+    doSearch(transcript);
+  };
+  recognition.onend = () => { btn.classList.remove('listening'); recognition = null; };
+  recognition.onerror = () => { btn.classList.remove('listening'); recognition = null; };
+  recognition.start();
+}
+
+// ========== Mode Tabs ==========
+function setMode(mode) {
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  const rag = document.getElementById('ragSection');
+  const results = document.getElementById('resultsSection');
+  if (mode === 'rag') { rag.style.display = ''; results.style.display = 'none'; }
+  else if (mode === 'dense') { rag.style.display = 'none'; results.style.display = ''; }
+  else { rag.style.display = ''; results.style.display = ''; }
+}
+
+// ========== Keyboard Shortcuts ==========
+function showKeyboardShortcuts() {
+  document.getElementById('kbdModal').classList.add('active');
+}
+
+document.addEventListener('keydown', (e) => {
+  const tag = e.target.tagName;
+  const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+  // Close modals/panels on Escape
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('kbdModal');
+    if (modal.classList.contains('active')) { modal.classList.remove('active'); return; }
+    const overlay = document.getElementById('sidebarOverlay');
+    if (overlay.classList.contains('active')) { closeSidebar(); return; }
+    if (document.getElementById('resultsPage').classList.contains('active')) { goHome(); return; }
+  }
+
+  if (isInput) {
+    // Enter in search inputs
+    if (e.key === 'Enter') {
+      doSearch(e.target.value);
+    }
+    return;
+  }
+
+  // Focus search
+  if (e.key === '/' || (e.ctrlKey && e.key === 'k')) {
+    e.preventDefault();
+    const hp = document.getElementById('homepage');
+    if (hp.style.display !== 'none') {
+      document.getElementById('homeSearchInput').focus();
+    } else {
+      document.getElementById('navSearchInput').focus();
+      document.getElementById('navSearchInput').select();
+    }
+  }
+
+  // Show shortcuts
+  if (e.key === '?') showKeyboardShortcuts();
+
+  // Toggle dark mode
+  if (e.ctrlKey && e.key === 'd') { e.preventDefault(); toggleMode(); }
+
+  // Tab numbers
+  if (e.key === '1') setMode('all');
+  if (e.key === '2') setMode('rag');
+  if (e.key === '3') setMode('dense');
+});
+
+// Nav search input events
+const navInput = document.getElementById('navSearchInput');
+navInput.addEventListener('input', () => {
+  document.getElementById('navClearBtn').style.display = navInput.value ? 'block' : 'none';
+});
+
+function clearNavSearch() {
+  navInput.value = ''; navInput.focus();
+  document.getElementById('navClearBtn').style.display = 'none';
+}
+
+// Init
+updateHistoryBadge();
+if (settings.darkMode) document.getElementById('darkToggle').classList.add('active');
+</script>
+</body>
+</html>
+

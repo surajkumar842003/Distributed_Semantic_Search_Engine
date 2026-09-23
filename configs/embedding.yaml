@@ -1,0 +1,17 @@
+embedding:
+  model_name: "BAAI/bge-small-en-v1.5"
+  embedding_dim: 384
+  batch_size: 64
+  precision: "fp16"
+  max_seq_length: 256
+  normalize_embeddings: true
+  device: "cuda:0"
+
+  optimization:
+    use_torch_compile: false
+    torch_compile_mode: "default"
+    use_onnx: false
+    bucket_by_length: true
+    bucket_boundaries: [64, 128, 192, 256]
+    pinned_memory: true
+    num_workers: 4

@@ -1,0 +1,26 @@
+serving:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+
+  retrieval:
+    dense_top_k: 50
+    sparse_top_k: 50
+    rrf_k: 60
+    final_rerank_top_k: 5
+
+  reranker:
+    model_name: "BAAI/bge-reranker-base"
+    precision: "fp16"
+    batch_size: 64
+    device: "cuda:0"
+
+  rag:
+    provider: "api"
+    model: "gemini-1.5-flash"
+    temperature: 0.2
+    max_output_tokens: 1024
+    inline_citations: true
+    citation_format: "[{citation_index}]"
+    fallback_to_offline: true
+
